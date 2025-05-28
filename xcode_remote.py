@@ -157,13 +157,13 @@ class XcodeRemote:
                 for line in lines:
                     if 'error:' in line.lower():
                         # Try to extract file:line:column format - handle Swift and C/ObjC files  
-                        file_error_match = re.search(r'(/[^:]+\.(?:swift|[chm]{1,2})):\d+:\d+.*?error:\s*(.+)', line, re.IGNORECASE)
+                        file_error_match = re.search(r'(/[^:]+\.(?:swift|c(?:pp)?|h|mm?)):\d+:\d+.*?error:\s*(.+)', line, re.IGNORECASE)
                         if file_error_match:
                             error_msg = f"{file_error_match.group(1)}:{file_error_match.group(2).strip()}"
                             result["errors"].add(error_msg)
                         else:
                             # Handle simple error format for Swift and ObjC files: /path/file.ext:error message
-                            simple_error_match = re.search(r'(/[^:]+\.(?:swift|mm?)):(.+)', line, re.IGNORECASE)
+                            simple_error_match = re.search(r'(/[^:]+\.(?:swift|c(?:pp)?|h|mm?)):(.+)', line, re.IGNORECASE)
                             if simple_error_match:
                                 file_path = simple_error_match.group(1)
                                 message_part = simple_error_match.group(2)
@@ -181,7 +181,7 @@ class XcodeRemote:
                                 if clean_message:
                                     result["errors"].add(f"{file_path}:{clean_message}")
                     elif 'warning:' in line.lower():
-                        file_warning_match = re.search(r'(/[^:]+\.(?:swift|[chm]{1,2})):\d+:\d+.*?warning:\s*(.+)', line, re.IGNORECASE)
+                        file_warning_match = re.search(r'(/[^:]+\.(?:swift|c(?:pp)?|h|mm?)):\d+:\d+.*?warning:\s*(.+)', line, re.IGNORECASE)
                         if file_warning_match:
                             warning_msg = f"{file_warning_match.group(1)}:{file_warning_match.group(2).strip()}"
                             result["warnings"].add(warning_msg)
