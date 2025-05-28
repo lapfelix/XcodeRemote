@@ -156,13 +156,24 @@ class XcodeRemote:
                 lines = content.split('\n')
                 for line in lines:
                     if 'error:' in line.lower():
-                        # Try to extract file:line:column format
-                        file_error_match = re.search(r'(/[^:]+\.[ch]?):\d+:\d+.*?error:\s*(.+)', line, re.IGNORECASE)
+                        # Try to extract file:line:column format - handle Swift and C/ObjC files  
+                        file_error_match = re.search(r'(/[^:]+\.(?:swift|[chm])):\d+:\d+.*?error:\s*(.+)', line, re.IGNORECASE)
                         if file_error_match:
                             error_msg = f"{file_error_match.group(1)}:{file_error_match.group(2).strip()}"
                             result["errors"].add(error_msg)
+                        else:
+                            # Handle simple Swift error format: /path/file.swift:error message
+                            simple_error_match = re.search(r'(/[^:]+\.swift):(.+)', line, re.IGNORECASE)
+                            if simple_error_match:
+                                file_path = simple_error_match.group(1)
+                                message_part = simple_error_match.group(2)
+                                # Clean up the message - remove any internal formatting
+                                clean_message = re.sub(r'[a-f0-9]{16}\^[a-f0-9]{16}\^-\d+[^:]*', '', message_part)
+                                clean_message = clean_message.strip('"').strip()
+                                if clean_message:
+                                    result["errors"].add(f"{file_path}:{clean_message}")
                     elif 'warning:' in line.lower():
-                        file_warning_match = re.search(r'(/[^:]+\.[ch]?):\d+:\d+.*?warning:\s*(.+)', line, re.IGNORECASE)
+                        file_warning_match = re.search(r'(/[^:]+\.(?:swift|[chm])):\d+:\d+.*?warning:\s*(.+)', line, re.IGNORECASE)
                         if file_warning_match:
                             warning_msg = f"{file_warning_match.group(1)}:{file_warning_match.group(2).strip()}"
                             result["warnings"].add(warning_msg)
