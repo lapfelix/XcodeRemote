@@ -240,6 +240,21 @@ class XcodeRemote:
             print("No build log found")
             return build_success
 
+def check_accessibility_permissions():
+    """Check if accessibility permissions are granted"""
+    test_script = '''
+    tell application "System Events"
+        return true
+    end tell
+    '''
+    
+    try:
+        subprocess.run(['osascript', '-e', test_script], 
+                      capture_output=True, text=True, check=True, timeout=5)
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return False
+
 def main():
     parser = argparse.ArgumentParser(description="Remote Xcode build tool")
     parser.add_argument("project_path", help="Path to the .xcodeproj file")
@@ -250,6 +265,13 @@ def main():
                        help="Timeout in seconds (default: 300)")
     
     args = parser.parse_args()
+    
+    # Check accessibility permissions
+    if not check_accessibility_permissions():
+        print("⚠️  Accessibility permissions required!")
+        print("Go to: System Settings → Privacy & Security → Accessibility")
+        print("Add your terminal app and enable it.")
+        sys.exit(1)
     
     try:
         xcode_remote = XcodeRemote(args.project_path)
