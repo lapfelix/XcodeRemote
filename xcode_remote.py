@@ -76,13 +76,13 @@ class XcodeRemote:
             activate
         end tell
         
-        delay 0.5
+        delay 0.1
         
         tell application "System Events"
             keystroke "{keystroke_cmd}" using {{command down}}
         end tell
         
-        delay 0.5
+        delay 0.1
         
         tell application "System Events"
             keystroke tab using {{command down}}
