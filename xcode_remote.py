@@ -157,23 +157,31 @@ class XcodeRemote:
                 for line in lines:
                     if 'error:' in line.lower():
                         # Try to extract file:line:column format - handle Swift and C/ObjC files  
-                        file_error_match = re.search(r'(/[^:]+\.(?:swift|[chm])):\d+:\d+.*?error:\s*(.+)', line, re.IGNORECASE)
+                        file_error_match = re.search(r'(/[^:]+\.(?:swift|[chm]{1,2})):\d+:\d+.*?error:\s*(.+)', line, re.IGNORECASE)
                         if file_error_match:
                             error_msg = f"{file_error_match.group(1)}:{file_error_match.group(2).strip()}"
                             result["errors"].add(error_msg)
                         else:
-                            # Handle simple Swift error format: /path/file.swift:error message
-                            simple_error_match = re.search(r'(/[^:]+\.swift):(.+)', line, re.IGNORECASE)
+                            # Handle simple error format for Swift and ObjC files: /path/file.ext:error message
+                            simple_error_match = re.search(r'(/[^:]+\.(?:swift|mm?)):(.+)', line, re.IGNORECASE)
                             if simple_error_match:
                                 file_path = simple_error_match.group(1)
                                 message_part = simple_error_match.group(2)
-                                # Clean up the message - remove any internal formatting
-                                clean_message = re.sub(r'[a-f0-9]{16}\^[a-f0-9]{16}\^-\d+[^:]*', '', message_part)
-                                clean_message = clean_message.strip('"').strip()
+                                # Clean up the message - extract just the error after the last file path
+                                # Look for the actual error message pattern
+                                error_msg_match = re.search(r'.*'+re.escape(file_path)+r':(.+?)(?:\s*$)', message_part)
+                                if error_msg_match:
+                                    clean_message = error_msg_match.group(1).strip()
+                                else:
+                                    # Fallback: just take everything after the colon, clean up quotes
+                                    clean_message = message_part.strip()
+                                    clean_message = re.sub(r'.*"([^"]+)".*', r'\1', clean_message)
+                                    if '"' not in clean_message:  # If no quotes found, keep original
+                                        clean_message = message_part.strip()
                                 if clean_message:
                                     result["errors"].add(f"{file_path}:{clean_message}")
                     elif 'warning:' in line.lower():
-                        file_warning_match = re.search(r'(/[^:]+\.(?:swift|[chm])):\d+:\d+.*?warning:\s*(.+)', line, re.IGNORECASE)
+                        file_warning_match = re.search(r'(/[^:]+\.(?:swift|[chm]{1,2})):\d+:\d+.*?warning:\s*(.+)', line, re.IGNORECASE)
                         if file_warning_match:
                             warning_msg = f"{file_warning_match.group(1)}:{file_warning_match.group(2).strip()}"
                             result["warnings"].add(warning_msg)
