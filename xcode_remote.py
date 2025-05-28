@@ -133,7 +133,7 @@ class XcodeRemote:
                         print("Build completed")
                         # Check if build was successful by parsing the log
                         results = self.parse_build_log(current_log)
-                        build_success = len(results["errors"]) == 0
+                        build_success = not results.get("build_failed", True) and len(results["errors"]) == 0
                         return True, build_success
                 else:
                     last_modified = current_modified
@@ -152,6 +152,17 @@ class XcodeRemote:
         try:
             with gzip.open(log_path, 'rt', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
+                
+                # Check for overall build result first
+                build_failed = False
+                if 'BUILD FAILED' in content or 'Build Failed' in content:
+                    build_failed = True
+                elif '** BUILD SUCCEEDED **' in content or 'Build Succeeded' in content:
+                    build_failed = False
+                else:
+                    # If no clear indicator, look for failure patterns
+                    build_failed = bool(re.search(r'(\d+\s+errors?|\d+\s+failures?)', content, re.IGNORECASE))
+                
                 # Look for error patterns in raw content
                 lines = content.split('\n')
                 for line in lines:
@@ -196,7 +207,8 @@ class XcodeRemote:
         return {
             "errors": list(result["errors"]),
             "warnings": list(result["warnings"]),
-            "notes": list(result["notes"])
+            "notes": list(result["notes"]),
+            "build_failed": build_failed
         }
     
     def build(self, action: str = "build", target: Optional[str] = None, timeout: int = 300) -> bool:
@@ -246,10 +258,18 @@ class XcodeRemote:
                     print(f"  • {warning}")
             
             
-            if results["errors"]:
-                print(f"\n❌ BUILD FAILED ({len(results['errors'])} errors)")
+            # Check overall build status first
+            overall_failed = results.get("build_failed", False)
+            has_errors = len(results["errors"]) > 0
+            has_warnings = len(results["warnings"]) > 0
+            
+            if has_errors or overall_failed:
+                if has_errors:
+                    print(f"\n❌ BUILD FAILED ({len(results['errors'])} errors)")
+                else:
+                    print("\n❌ BUILD FAILED (check build log for details)")
                 return False
-            elif results["warnings"]:
+            elif has_warnings:
                 print(f"\n⚠️  BUILD COMPLETED WITH WARNINGS ({len(results['warnings'])} warnings)")
                 return True
             else:
