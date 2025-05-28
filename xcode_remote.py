@@ -133,7 +133,7 @@ class XcodeRemote:
                         print("Build completed")
                         # Check if build was successful by parsing the log
                         results = self.parse_build_log(current_log)
-                        build_success = not results.get("build_failed", True) and len(results["errors"]) == 0
+                        build_success = len(results["errors"]) == 0
                         return True, build_success
                 else:
                     last_modified = current_modified
@@ -152,22 +152,11 @@ class XcodeRemote:
         try:
             with gzip.open(log_path, 'rt', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
-                
-                # Check for overall build result first
-                build_failed = False
-                if 'BUILD FAILED' in content or 'Build Failed' in content:
-                    build_failed = True
-                elif '** BUILD SUCCEEDED **' in content or 'Build Succeeded' in content:
-                    build_failed = False
-                else:
-                    # If no clear indicator, look for failure patterns
-                    build_failed = bool(re.search(r'(\d+\s+errors?|\d+\s+failures?)', content, re.IGNORECASE))
-                
                 # Look for error patterns in raw content
                 lines = content.split('\n')
                 for line in lines:
+                    # Standard error format with explicit "error:"
                     if 'error:' in line.lower():
-                        # Try to extract file:line:column format - handle Swift and C/ObjC files  
                         file_error_match = re.search(r'(/[^:]+\.(?:swift|c(?:pp)?|h|mm?)):\d+:\d+.*?error:\s*(.+)', line, re.IGNORECASE)
                         if file_error_match:
                             error_msg = f"{file_error_match.group(1)}:{file_error_match.group(2).strip()}"
@@ -191,11 +180,40 @@ class XcodeRemote:
                                         clean_message = message_part.strip()
                                 if clean_message:
                                     result["errors"].add(f"{file_path}:{clean_message}")
+                    
+                    # Swift compilation errors that don't use "error:" prefix (but limit processing)
+                    elif len(line) < 1000 and re.search(r'(/[^:]+\.swift):\d+:\d+\s+', line):
+                        # Check if this looks like a Swift error (common patterns)
+                        if any(pattern in line.lower() for pattern in [
+                            'cannot override', 'ambiguous use', 'overriding declaration', 'overriding property must be',
+                            'conflicts with', 'must be unwrapped', 'requires an \'override\' keyword',
+                            'getter for', 'setter for', 'value of optional type'
+                        ]):
+                            swift_match = re.search(r'(/[^:]+\.swift):(\d+):(\d+)\s+(.+)', line)
+                            if swift_match:
+                                file_path, line_num, col_num, message = swift_match.groups()
+                                clean_message = message.strip()[:200]  # Limit message length
+                                result["errors"].add(f"{file_path}:{line_num}:{col_num} {clean_message}")
+                    
+                    # Objective-C errors (but limit processing)
+                    elif len(line) < 1000 and re.search(r'(/[^:]+\.mm?):\d+:\d+\s+', line):
+                        if any(pattern in line.lower() for pattern in [
+                            'property', 'not found', 'no visible @interface', 'declares the selector'
+                        ]):
+                            objc_match = re.search(r'(/[^:]+\.mm?):(\d+):(\d+)\s+(.+)', line)
+                            if objc_match:
+                                file_path, line_num, col_num, message = objc_match.groups()
+                                clean_message = message.strip()[:200]  # Limit message length
+                                result["errors"].add(f"{file_path}:{line_num}:{col_num} {clean_message}")
+                    
+                    # Warning format
                     elif 'warning:' in line.lower():
                         file_warning_match = re.search(r'(/[^:]+\.(?:swift|c(?:pp)?|h|mm?)):\d+:\d+.*?warning:\s*(.+)', line, re.IGNORECASE)
                         if file_warning_match:
                             warning_msg = f"{file_warning_match.group(1)}:{file_warning_match.group(2).strip()}"
                             result["warnings"].add(warning_msg)
+                    
+                    # Note format
                     elif 'note:' in line.lower():
                         note_match = re.search(r'note:\s*(.+)', line, re.IGNORECASE)
                         if note_match:
@@ -207,8 +225,7 @@ class XcodeRemote:
         return {
             "errors": list(result["errors"]),
             "warnings": list(result["warnings"]),
-            "notes": list(result["notes"]),
-            "build_failed": build_failed
+            "notes": list(result["notes"])
         }
     
     def build(self, action: str = "build", target: Optional[str] = None, timeout: int = 300) -> bool:
@@ -258,18 +275,10 @@ class XcodeRemote:
                     print(f"  • {warning}")
             
             
-            # Check overall build status first
-            overall_failed = results.get("build_failed", False)
-            has_errors = len(results["errors"]) > 0
-            has_warnings = len(results["warnings"]) > 0
-            
-            if has_errors or overall_failed:
-                if has_errors:
-                    print(f"\n❌ BUILD FAILED ({len(results['errors'])} errors)")
-                else:
-                    print("\n❌ BUILD FAILED (check build log for details)")
+            if results["errors"]:
+                print(f"\n❌ BUILD FAILED ({len(results['errors'])} errors)")
                 return False
-            elif has_warnings:
+            elif results["warnings"]:
                 print(f"\n⚠️  BUILD COMPLETED WITH WARNINGS ({len(results['warnings'])} warnings)")
                 return True
             else:
